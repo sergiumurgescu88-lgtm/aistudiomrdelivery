@@ -54,8 +54,8 @@ Deno.serve(async (req) => {
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{ parts: [{ text: `Please generate a spoken version of this text: ${text}` }] }],
+      model: "gemini-2.5-flash-preview-tts",
+      contents: `Say naturally: ${text}`,
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
