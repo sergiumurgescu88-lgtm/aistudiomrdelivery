@@ -131,24 +131,14 @@ const ChatBot: React.FC = () => {
     setCurrentState('THINKING');
 
     try {
-      let fullResponse = '';
-      const stream = chatWithConcierge(text, messages.map(m => ({ role: m.role, text: m.text })), currentPendingImage);
+      const fullResponse = await chatWithConcierge(text, messages.map(m => ({ role: m.role, text: m.text })), currentPendingImage);
 
       const botMsg: Message = {
         role: 'model',
-        text: '',
+        text: fullResponse,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, botMsg]);
-
-      for await (const chunk of stream) {
-        fullResponse += chunk;
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = { ...newMessages[newMessages.length - 1], text: fullResponse };
-          return newMessages;
-        });
-      }
 
       await playResponse(fullResponse);
     } catch (error) {

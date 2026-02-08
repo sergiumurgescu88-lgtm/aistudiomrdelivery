@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable';
-import { clearApiKeyCache } from '@/services/geminiService';
+
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 export interface Profile {
@@ -127,7 +127,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    clearApiKeyCache();
     await supabase.auth.signOut();
     setProfile(null);
     setRoles([]);
