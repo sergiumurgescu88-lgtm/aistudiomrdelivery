@@ -35,6 +35,49 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Server-side daily limit enforcement
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('daily_usage, last_usage_date, account_tier, account_status, free_credits, purchased_credits')
+      .eq('user_id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return new Response(
+        JSON.stringify({ error: "Could not fetch user profile" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (profile.account_status !== 'ACTIVE') {
+      return new Response(
+        JSON.stringify({ error: "Account not active. Please verify your email." }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check credits
+    if (profile.free_credits <= 0 && profile.purchased_credits <= 0) {
+      return new Response(
+        JSON.stringify({ error: "Out of credits. Purchase a package to continue." }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check daily limit
+    const now = new Date();
+    const lastUsage = new Date(profile.last_usage_date);
+    const daysPassed = (now.getTime() - lastUsage.getTime()) / (24 * 60 * 60 * 1000);
+    const currentDailyUsage = daysPassed > 1 ? 0 : profile.daily_usage;
+    const dailyLimit = profile.account_tier === 'PREMIUM' ? 100 : 10;
+
+    if (currentDailyUsage >= dailyLimit) {
+      return new Response(
+        JSON.stringify({ error: "Daily limit reached. Upgrade to Premium for higher limits or try again tomorrow." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { action, prompt, imageBase64, editPrompt } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
