@@ -115,7 +115,7 @@ export const generateDishImage = async (
   }
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.0-flash-preview-image-generation",
     contents: { parts: parts },
     config: {
       responseModalities: [Modality.IMAGE, Modality.TEXT],
@@ -160,7 +160,7 @@ export const editDishImage = async (currentImageBase64: string, editPrompt: stri
   const apiKey = await getApiKey();
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-exp",
+    model: "gemini-2.0-flash-preview-image-generation",
     contents: {
       parts: [
         { inlineData: { data: getBase64Data(currentImageBase64), mimeType: getMimeType(currentImageBase64) } },
