@@ -126,22 +126,15 @@ export const speakText = async (text: string): Promise<ArrayBuffer> => {
   return bytes.buffer;
 };
 
-// Note: Live concierge requires a direct WebSocket connection and cannot be
-// proxied through an edge function. It still needs a client-side API key.
-export const connectLiveConcierge = async (callbacks: any) => {
-  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (!envKey) {
-    throw new Error("Live concierge requires a client-side API key configuration.");
-  }
-  const { GoogleGenAI, Modality } = await import("@google/genai");
-  const ai = new GoogleGenAI({ apiKey: envKey });
-  return ai.live.connect({
-    model: 'gemini-2.0-flash-live-001',
-    callbacks,
-    config: {
-      responseModalities: [Modality.AUDIO],
-      systemInstruction: "You are Maya, the Live AI Concierge. Respond naturally in real-time.",
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-    },
+// Live concierge via server-side edge function (no client-side API key needed)
+export const sendLiveConciergeMessage = async (
+  message: string,
+  audioBase64?: string | null
+): Promise<{ audioBase64: string; mimeType: string }> => {
+  const result = await callEdgeFunction("gemini-live-session", {
+    message,
+    audioBase64: audioBase64 || null,
   });
+  if (!result.audioBase64) throw new Error("Live session failed.");
+  return result;
 };

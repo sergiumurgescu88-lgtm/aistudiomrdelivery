@@ -7,6 +7,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const MAX_TEXT_LENGTH = 50000;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -14,7 +16,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ error: "Authorization required" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -43,10 +45,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { text } = await req.json();
-    if (!text) {
+    // Parse and validate input
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
       return new Response(
-        JSON.stringify({ error: "Menu text is required" }),
+        JSON.stringify({ error: "Invalid JSON body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { text } = body;
+
+    if (!text || typeof text !== "string") {
+      return new Response(
+        JSON.stringify({ error: "text is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (text.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "text cannot be empty" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (text.length > MAX_TEXT_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `text must be under ${MAX_TEXT_LENGTH} characters` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -86,7 +114,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("gemini-parse-menu error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Menu parsing failed" }),
+      JSON.stringify({ error: "Menu parsing failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

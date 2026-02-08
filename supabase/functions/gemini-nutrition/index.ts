@@ -7,6 +7,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const MAX_IMAGE_BASE64_LENGTH = 10_000_000; // ~7.5MB decoded
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -14,7 +16,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ error: "Authorization required" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -43,10 +45,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { imageBase64 } = await req.json();
-    if (!imageBase64) {
+    // Parse and validate input
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
       return new Response(
-        JSON.stringify({ error: "Image data required" }),
+        JSON.stringify({ error: "Invalid JSON body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { imageBase64 } = body;
+
+    if (!imageBase64 || typeof imageBase64 !== "string") {
+      return new Response(
+        JSON.stringify({ error: "imageBase64 is required and must be a string" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: "Image is too large (max ~7.5MB)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -77,7 +98,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("gemini-nutrition error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Nutrition analysis failed" }),
+      JSON.stringify({ error: "Nutrition analysis failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
