@@ -112,6 +112,7 @@ export const generateDishImage = async (
     body: JSON.stringify({
       action: "generate",
       prompt: masterPrompt,
+      aspectRatio,
     }),
   });
 
