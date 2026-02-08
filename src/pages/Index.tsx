@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Settings2, Key, Snowflake, Info, Loader2, AlertCircle, CreditCard, Coins, User as UserIcon, LogOut, ShoppingCart, ShieldCheck, Plus, CheckCircle, HelpCircle, Mail, X, Download, ExternalLink, Globe2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings2, Snowflake, Info, Loader2, AlertCircle, Coins, User as UserIcon, LogOut, Plus, CheckCircle, Mail, X, Download, Globe2 } from 'lucide-react';
 import MenuParser from '../components/MenuParser';
 import DishCard from '../components/DishCard';
 import Snowfall from '../components/Snowfall';
@@ -9,7 +9,9 @@ import Pricing from '../components/Pricing';
 import AdminPanel from '../components/AdminPanel';
 import UserDashboard from '../components/UserDashboard';
 import SupportPolicyModal from '../components/SupportPolicyModal';
-import { Dish, PhotoStyle, ImageSize, PhotoQuality, STYLE_TOOLTIPS, User, Currency, ActivityLog } from '../types';
+import { Dish, PhotoStyle, ImageSize, PhotoQuality, STYLE_TOOLTIPS } from '../types';
+import { useAuth } from '../hooks/useAuth';
+import { useCredits } from '../hooks/useCredits';
 import JSZip from 'jszip';
 
 const MrDeliveryLogo = ({ size = 24, className = "", idPrefix = "logo" }: { size?: number, className?: string, idPrefix?: string }) => (
@@ -28,12 +30,12 @@ const MrDeliveryLogo = ({ size = 24, className = "", idPrefix = "logo" }: { size
   </svg>
 );
 
-const MOCK_USERS: User[] = [{ id: '1', googleId: 'google_admin_123', email: 'admin@mrdelivery.ro', fullName: 'Infrastructure Admin', credits: 9999, freeCredits: 0, purchasedCredits: 9999, accountTier: 'PREMIUM', accountStatus: 'ACTIVE', dailyUsage: 0, lastUsageDate: new Date().toISOString(), role: 'admin', joinedAt: '2023-01-01', totalGenerations: 1250, isLoggedIn: true, isEmailVerified: true, preferredCurrency: 'EUR' }];
-const MOCK_LOGS: ActivityLog[] = [{ id: 'l1', userId: '2', userName: 'Chef Paul Bocuse', action: 'PRODUCE', details: 'Pizza Michelin - Standard (1:1)', creditsAffected: -1, timestamp: new Date().toISOString() }];
-
 interface Toast { id: string; type: 'success' | 'error' | 'info'; message: string; subMessage?: string; }
 
 const Index: React.FC = () => {
+  const { profile, isAdmin, isLoading: authLoading, signOut } = useAuth();
+  const { chargeCredit, purchaseCredits } = useCredits();
+
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [style, setStyle] = useState<PhotoStyle>(PhotoStyle.NATURAL_DAYLIGHT);
   const [size, setSize] = useState<ImageSize>(ImageSize.SIZE_1K);
@@ -44,35 +46,12 @@ const Index: React.FC = () => {
   const [step, setStep] = useState<1 | 2>(1);
   const [isZipping, setIsZipping] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showUserDashboard, setShowUserDashboard] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [hasShownExpiryWarning, setHasShownExpiryWarning] = useState(false);
-  const [allUsers, setAllUsers] = useState<User[]>(MOCK_USERS);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(MOCK_LOGS);
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('mrdelivery_session');
-    if (savedUser) { try { const p = JSON.parse(savedUser); if (p.freeCredits === undefined) { p.freeCredits = p.credits; p.purchasedCredits = 0; p.accountTier = 'FREE'; p.dailyUsage = 0; p.lastUsageDate = new Date().toISOString(); } if (!p.accountStatus) { p.accountStatus = 'ACTIVE'; p.isEmailVerified = true; } setUser(p); } catch (e) {} }
-    const savedUsers = localStorage.getItem('mrdelivery_db_users');
-    if (savedUsers) { try { setAllUsers(JSON.parse(savedUsers)); } catch (e) {} }
-  }, []);
-
-  useEffect(() => { if (user) localStorage.setItem('mrdelivery_session', JSON.stringify(user)); else localStorage.removeItem('mrdelivery_session'); }, [user]);
-  useEffect(() => { localStorage.setItem('mrdelivery_db_users', JSON.stringify(allUsers)); }, [allUsers]);
-
-  useEffect(() => {
-    if (!user) return;
-    let updated = false; let newUser = { ...user }; const now = new Date();
-    const lastUsage = new Date(user.lastUsageDate);
-    if (now.getTime() - lastUsage.getTime() > 24 * 60 * 60 * 1000) { if (newUser.dailyUsage > 0) { newUser.dailyUsage = 0; updated = true; } }
-    if (user.freeCredits > 0) { const joinDate = new Date(user.joinedAt); const daysSinceJoin = (now.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24); if (daysSinceJoin > 30) { newUser.freeCredits = 0; newUser.credits = newUser.purchasedCredits; updated = true; addToast('error', 'Free Credits Expired', 'Free credits expired. Upgrade to Premium!'); } else if (daysSinceJoin > 23 && !hasShownExpiryWarning) { addToast('info', 'Expiration Warning', 'Your free credits expire in 7 days!'); setHasShownExpiryWarning(true); } }
-    if (updated) { setUser(newUser); setAllUsers(prev => prev.map(u => u.id === user.id ? newUser : u)); }
-  }, [user, hasShownExpiryWarning]);
 
   const activeGenerationsCount = dishes.filter(d => d.isLoading || d.isEditing).length;
   const isGenerationLimitReached = activeGenerationsCount >= 3;
@@ -84,27 +63,19 @@ const Index: React.FC = () => {
   };
 
   const handleDishesParsed = (parsedDishes: { name: string; description: string; referencePhoto?: string }[], referencePhoto?: string) => {
-    if (!user) { setShowAuth(true); return; }
+    if (!profile) { setShowAuth(true); return; }
     const newDishes = parsedDishes.map((d) => ({ ...d, id: Math.random().toString(36).substr(2, 9), referencePhoto: referencePhoto || d.referencePhoto, isLoading: false, isEditing: false, isAnalyzing: false }));
     setDishes((prev) => [...prev, ...newDishes]); setStep(2);
   };
 
-  const handleChargeCredit = (action: string, details: string) => {
-    if (!user) return;
-    if (user.accountStatus !== 'ACTIVE') { addToast('error', 'Action Blocked', 'Please confirm your email.'); setShowAuth(true); throw new Error("Account not active"); }
-    const now = new Date(); const lastUsage = new Date(user.lastUsageDate);
-    let currentDailyUsage = user.dailyUsage; let currentLastUsageDate = user.lastUsageDate;
-    if (now.getTime() - lastUsage.getTime() > 24 * 60 * 60 * 1000) currentDailyUsage = 0;
-    const dailyLimit = user.accountTier === 'PREMIUM' ? 100 : 10;
-    if (currentDailyUsage >= dailyLimit) { addToast('error', 'Daily Limit Reached', 'Upgrade for more edits!'); throw new Error("Daily limit reached"); }
-    let newFree = user.freeCredits; let newPurchased = user.purchasedCredits; let deductedFrom = '';
-    if (newFree > 0) { newFree--; deductedFrom = 'Free'; } else if (newPurchased > 0) { newPurchased--; deductedFrom = 'Purchased'; } else { addToast('error', 'Out of credits!', 'Purchase a package.'); throw new Error("Insufficient credits"); }
-    const newTier = newPurchased > 0 ? 'PREMIUM' as const : 'FREE' as const;
-    if (currentDailyUsage === 0) currentLastUsageDate = now.toISOString();
-    const updatedUser: User = { ...user, freeCredits: newFree, purchasedCredits: newPurchased, credits: newFree + newPurchased, totalGenerations: user.totalGenerations + 1, dailyUsage: currentDailyUsage + 1, lastUsageDate: currentLastUsageDate, accountTier: newTier };
-    setUser(updatedUser); setAllUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
-    setActivityLogs(prev => [{ id: Math.random().toString(36).substr(2, 9), userId: user.id, userName: user.fullName, action, details: `${details} (${deductedFrom})`, creditsAffected: -1, timestamp: new Date().toISOString() }, ...prev]);
-    addToast('success', 'Production Successful!', `1 credit used. ${newFree + newPurchased} remaining.`);
+  const handleChargeCredit = async (action: string, details: string) => {
+    try {
+      const result = await chargeCredit(action, details);
+      addToast('success', 'Production Successful!', `1 credit used. ${result.creditsRemaining} remaining.`);
+    } catch (error: any) {
+      addToast('error', 'Action Failed', error.message);
+      throw error;
+    }
   };
 
   const updateDish = (id: string, updates: Partial<Dish>) => setDishes((prev) => prev.map((dish) => (dish.id === id ? { ...dish, ...updates } : dish)));
@@ -124,30 +95,20 @@ const Index: React.FC = () => {
     } catch (error) { console.error("Export failed", error); } finally { setIsZipping(false); }
   };
 
-  const handleAuthComplete = (newUser: User) => {
-    if (newUser.email.toLowerCase().includes('admin')) newUser.role = 'admin';
-    setUser(newUser);
-    setAllUsers(prev => { const existing = prev.find(u => u.email === newUser.email); if (existing) return prev.map(u => u.email === newUser.email ? { ...u, isLoggedIn: true, accountStatus: newUser.accountStatus, freeCredits: newUser.freeCredits, credits: newUser.credits } : u); return [...prev, { ...newUser, joinedAt: new Date().toISOString(), totalGenerations: 0 }]; });
-    setShowAuth(false);
-    if (newUser.accountStatus === 'ACTIVE' && newUser.totalGenerations === 0 && newUser.freeCredits === 50) addToast('success', 'Welcome! 50 free credits granted.', 'Expires in 30 days.');
-    else if (newUser.accountStatus === 'PENDING_VERIFICATION') addToast('info', 'Verification Required', 'Please confirm your email.');
-    else addToast('success', `Session established for ${newUser.fullName}`);
-  };
-
-  const handleLogout = () => { setUser(null); setShowUserDashboard(false); addToast('info', 'Securely logged out'); };
-
-  const handlePurchase = (credits: number) => {
-    if (user) {
-      if (user.accountStatus !== 'ACTIVE') { addToast('error', 'Purchase Blocked', 'Please verify email first.'); return; }
-      const updatedUser = { ...user, purchasedCredits: user.purchasedCredits + credits, credits: user.freeCredits + user.purchasedCredits + credits, accountTier: 'PREMIUM' as const };
-      setUser(updatedUser); setAllUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
-      setActivityLogs(prev => [{ id: Math.random().toString(36).substr(2, 9), userId: user.id, userName: user.fullName, action: 'PURCHASE', details: 'Credit Package', creditsAffected: credits, timestamp: new Date().toISOString() }, ...prev]);
-      setShowPricing(false); addToast('success', `Success! ${credits} credits added.`, "You're now Premium!");
+  const handlePurchase = async (credits: number) => {
+    try {
+      await purchaseCredits(credits);
+      setShowPricing(false);
+      addToast('success', `Success! ${credits} credits added.`, "You're now Premium!");
+    } catch (error: any) {
+      addToast('error', 'Purchase Failed', error.message);
     }
   };
 
-  const updateOtherUserCredits = (userId: string, amount: number) => {
-    setAllUsers(prev => prev.map(u => { if (u.id === userId) { const newPurchased = Math.max(0, u.purchasedCredits + amount); const updated = { ...u, purchasedCredits: newPurchased, credits: u.freeCredits + newPurchased }; if (user && user.id === userId) setUser(updated); return updated; } return u; }));
+  const handleLogout = async () => {
+    await signOut();
+    setShowUserDashboard(false);
+    addToast('info', 'Securely logged out');
   };
 
   const getCreditColor = (credits: number) => { if (credits >= 20) return 'text-green-500'; if (credits >= 5) return 'text-orange-500'; return 'text-red-500'; };
@@ -155,11 +116,11 @@ const Index: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-200 selection:bg-orange-500/30 overflow-x-hidden relative">
       {isSnowing && <Snowfall />}
-      {showAuth && <Auth onAuthComplete={handleAuthComplete} onClose={() => setShowAuth(false)} allUsers={allUsers} />}
-      {showPricing && <Pricing onPurchase={handlePurchase} onClose={() => setShowPricing(false)} currentCurrency={user?.preferredCurrency || 'EUR'} onCurrencyChange={(c) => user && setUser({...user, preferredCurrency: c})} />}
-      <SupportPolicyModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} user={user} />
-      {showAdmin && user?.role === 'admin' && <AdminPanel users={allUsers} logs={activityLogs} onClose={() => setShowAdmin(false)} onUpdateUserCredits={updateOtherUserCredits} onRefresh={() => {}} />}
-      {showUserDashboard && user && <UserDashboard user={user} logs={activityLogs} onClose={() => setShowUserDashboard(false)} onLogout={handleLogout} onOpenPricing={() => { setShowPricing(true); setShowUserDashboard(false); }} onUpdateUser={(upd) => { const updated = {...user, ...upd}; setUser(updated); setAllUsers(prev => prev.map(u => u.id === user.id ? updated : u)); }} onOpenSupport={() => { setShowSupportModal(true); setShowUserDashboard(false); }} />}
+      {showAuth && <Auth onClose={() => setShowAuth(false)} />}
+      {showPricing && <Pricing onPurchase={handlePurchase} onClose={() => setShowPricing(false)} currentCurrency={profile?.preferred_currency as any || 'EUR'} onCurrencyChange={() => {}} />}
+      <SupportPolicyModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} user={profile ? { credits: profile.credits, accountTier: profile.account_tier, email: profile.email } : null} />
+      {showAdmin && isAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      {showUserDashboard && profile && <UserDashboard onClose={() => setShowUserDashboard(false)} onOpenPricing={() => { setShowPricing(true); setShowUserDashboard(false); }} onOpenSupport={() => { setShowSupportModal(true); setShowUserDashboard(false); }} />}
 
       {/* Toast System */}
       <div className="fixed top-24 right-6 z-[1100] flex flex-col gap-3 pointer-events-none">
@@ -188,20 +149,20 @@ const Index: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-6 ml-auto">
-            {user ? (
+            {profile ? (
               <div className="flex items-center gap-1.5 sm:gap-5">
-                {user.role === 'admin' && <button onClick={() => setShowAdmin(true)} className="flex items-center gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-orange-600/10 border border-zinc-800 hover:border-orange-500/40 rounded-xl sm:rounded-2xl transition-all text-orange-500 group shadow-lg"><ShieldCheck size={14} className="group-hover:scale-110 transition-transform duration-300 sm:w-4 sm:h-4" /><span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest hidden md:inline">Admin</span></button>}
+                {isAdmin && <button onClick={() => setShowAdmin(true)} className="flex items-center gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-orange-600/10 border border-zinc-800 hover:border-orange-500/40 rounded-xl sm:rounded-2xl transition-all text-orange-500 group shadow-lg"><span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest hidden md:inline">Admin</span></button>}
                 <button onClick={() => setShowPricing(true)} className="flex items-center gap-1.5 sm:gap-4 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl sm:rounded-2xl transition-all group shadow-xl ring-1 ring-white/5">
-                  <Coins size={14} className={`${getCreditColor(user.credits)} sm:w-[18px] sm:h-[18px]`} />
-                  <div className="flex flex-col items-start leading-none"><span className={`text-xs sm:text-sm font-black ${getCreditColor(user.credits)}`}>{user.credits}</span></div>
+                  <Coins size={14} className={`${getCreditColor(profile.credits)} sm:w-[18px] sm:h-[18px]`} />
+                  <div className="flex flex-col items-start leading-none"><span className={`text-xs sm:text-sm font-black ${getCreditColor(profile.credits)}`}>{profile.credits}</span></div>
                   <div className="ml-1 p-0.5 sm:p-1 bg-orange-600 text-white rounded-md sm:rounded-lg group-hover:scale-110 transition-all shadow-xl shadow-orange-950/40 hidden xs:flex"><Plus size={8} className="sm:w-[10px] sm:h-[10px]" /></div>
                 </button>
                 <div className="flex items-center gap-2 sm:gap-4 pl-1.5 sm:pl-6 border-l border-zinc-800">
                   <div className="relative group/avatar cursor-pointer shrink-0" onClick={() => setShowUserDashboard(true)}>
                     <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-[1rem] bg-zinc-800 flex items-center justify-center text-zinc-500 border border-zinc-700 overflow-hidden shadow-2xl ring-1 ring-white/10 group-hover/avatar:ring-orange-500/40 transition-all">
-                      {user.profilePhoto ? <img src={user.profilePhoto} alt="" className="w-full h-full object-cover" /> : <UserIcon size={16} className="sm:w-5 sm:h-5" />}
+                      {profile.profile_photo ? <img src={profile.profile_photo} alt="" className="w-full h-full object-cover" /> : <UserIcon size={16} className="sm:w-5 sm:h-5" />}
                     </div>
-                    <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-zinc-950 sm:w-2.5 sm:h-2.5 ${user.accountTier === 'PREMIUM' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+                    <div className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-zinc-950 sm:w-2.5 sm:h-2.5 ${profile.account_tier === 'PREMIUM' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
                   </div>
                   <button onClick={handleLogout} className="p-1.5 text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all hidden sm:block"><LogOut size={20} /></button>
                 </div>
@@ -213,12 +174,11 @@ const Index: React.FC = () => {
         </div>
       </header>
 
-      {user && user.accountStatus === 'PENDING_VERIFICATION' && (
+      {profile && profile.account_status === 'PENDING_VERIFICATION' && (
         <div className="bg-orange-600 text-white p-3 text-center animate-in slide-in-from-top duration-500 relative z-[200]">
           <div className="flex items-center justify-center gap-3">
             <Mail size={16} className="animate-pulse" />
             <p className="text-[10px] font-black uppercase tracking-widest">Action Required: Please verify your email to unlock credits.</p>
-            <button onClick={() => setShowAuth(true)} className="px-3 py-1 bg-white text-orange-600 rounded-md text-[9px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-all">Verify Now</button>
           </div>
         </div>
       )}
@@ -287,7 +247,7 @@ const Index: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 sm:gap-14">
               {dishes.map((dish) => (
-                <DishCard key={dish.id} dish={dish} userCredits={user?.credits || 0} currentStyle={style} currentSize={size} currentQuality={quality} logoImage={logoImage} locationImage={locationImageReal} onUpdate={updateDish} onCharge={handleChargeCredit} onOpenPricing={() => setShowPricing(true)} addToast={addToast} isGenerationLimitReached={isGenerationLimitReached} onKeyError={() => setGlobalError("quota_exceeded")} />
+                <DishCard key={dish.id} dish={dish} userCredits={profile?.credits || 0} currentStyle={style} currentSize={size} currentQuality={quality} logoImage={logoImage} locationImage={locationImageReal} onUpdate={updateDish} onCharge={handleChargeCredit} onOpenPricing={() => setShowPricing(true)} addToast={addToast} isGenerationLimitReached={isGenerationLimitReached} onKeyError={() => setGlobalError("quota_exceeded")} />
               ))}
             </div>
           </div>
@@ -298,7 +258,7 @@ const Index: React.FC = () => {
 
       <footer className="py-24 text-center border-t border-white/5 bg-zinc-950/40 relative z-10">
         <div className="flex items-center justify-center gap-6 mb-8">
-           <a href="https://mrdelivery.ro" target="_blank" className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-500 hover:text-orange-500 transition-all shadow-xl hover:scale-110 active:scale-90"><Globe2 size={24} /></a>
+          <a href="https://mrdelivery.ro" target="_blank" className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-500 hover:text-orange-500 transition-all shadow-xl hover:scale-110 active:scale-90"><Globe2 size={24} /></a>
         </div>
         <p className="text-zinc-400 text-sm font-medium tracking-wide px-6">&copy; 2026 MrDelivery AI Studio &bull; Proprietary Infrastructure of MrDelivery AI Agency</p>
         <button onClick={() => setShowSupportModal(true)} className="text-zinc-600 text-[10px] font-bold uppercase tracking-[0.3em] mt-3 hover:text-orange-500 transition-colors">Refund Policy & Support</button>
