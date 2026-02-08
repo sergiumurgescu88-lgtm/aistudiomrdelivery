@@ -42,8 +42,6 @@ export interface DashboardMetrics {
 
 export const useAdminDashboard = () => {
   const { isAdmin } = useAuth();
-  const isPreviewMode = window.location.hostname.includes('lovableproject.com') || window.location.hostname.includes('lovable.app') || window.location.hostname === 'localhost';
-  const hasAccess = isAdmin || isPreviewMode;
 
   const [users, setUsers] = useState<Profile[]>([]);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
@@ -65,7 +63,7 @@ export const useAdminDashboard = () => {
 
   // Fetch all data
   const fetchData = useCallback(async () => {
-    if (!hasAccess) return;
+    if (!isAdmin) return;
     setIsLoading(true);
 
     const [usersRes, transRes, logsRes] = await Promise.all([
@@ -78,11 +76,11 @@ export const useAdminDashboard = () => {
     if (transRes.data) setTransactions(transRes.data as CreditTransaction[]);
     if (logsRes.data) setActivityLogs(logsRes.data as ActivityLog[]);
     setIsLoading(false);
-  }, [hasAccess]);
+  }, [isAdmin]);
 
   // Setup realtime subscriptions
   useEffect(() => {
-    if (!hasAccess) return;
+    if (!isAdmin) return;
 
     fetchData();
 
@@ -221,7 +219,7 @@ export const useAdminDashboard = () => {
 
   // Grant credits to a user
   const grantCredits = useCallback(async (userId: string, amount: number, reason: string) => {
-    if (!hasAccess) return;
+    if (!isAdmin) return;
 
     const targetUser = users.find(u => u.user_id === userId);
     if (!targetUser) return;
@@ -260,16 +258,16 @@ export const useAdminDashboard = () => {
 
   // Bulk grant credits
   const bulkGrantCredits = useCallback(async (userIds: string[], amount: number, reason: string) => {
-    if (!hasAccess) return;
+    if (!isAdmin) return;
 
     for (const userId of userIds) {
       await grantCredits(userId, amount, reason);
     }
-  }, [hasAccess, grantCredits]);
+  }, [isAdmin, grantCredits]);
 
   // Update account status
   const updateAccountStatus = useCallback(async (userId: string, status: 'ACTIVE' | 'SUSPENDED') => {
-    if (!hasAccess) return;
+    if (!isAdmin) return;
 
     const { error } = await supabase
       .from('profiles')
@@ -286,7 +284,7 @@ export const useAdminDashboard = () => {
       details: `Account ${status.toLowerCase()} by admin`,
       credits_affected: 0,
     });
-  }, [hasAccess, users]);
+  }, [isAdmin, users]);
 
   // Export to CSV
   const exportToCsv = useCallback((dataType: 'users' | 'transactions' | 'logs') => {

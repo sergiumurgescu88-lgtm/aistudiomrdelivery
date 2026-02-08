@@ -13,7 +13,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
@@ -36,7 +35,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get("VITE_GEMINI_API_KEY");
+    // Atomic credit check & deduction
+    const { data: creditResult, error: creditError } = await supabase.rpc('deduct_credit', {
+      p_amount: 1,
+      p_reason: 'Live AI Concierge session',
+    });
+
+    if (creditError || !creditResult?.success) {
+      const errorMsg = creditResult?.error || 'Credit check failed';
+      const status = errorMsg.includes('Insufficient') ? 402 : errorMsg.includes('Daily limit') ? 429 : 403;
+      return new Response(
+        JSON.stringify({ error: errorMsg }),
+        { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("VITE_GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
       return new Response(
         JSON.stringify({ error: "Gemini API key not configured" }),
@@ -44,7 +58,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse and validate input
     let body: Record<string, unknown>;
     try {
       body = await req.json();
@@ -71,7 +84,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use Gemini to generate a spoken audio response
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
     const parts: any[] = [{ text: message }];

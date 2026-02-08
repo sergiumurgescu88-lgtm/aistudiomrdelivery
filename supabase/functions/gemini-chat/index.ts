@@ -10,7 +10,7 @@ const corsHeaders = {
 const MAX_MESSAGE_LENGTH = 10000;
 const MAX_HISTORY_LENGTH = 50;
 const MAX_HISTORY_TEXT_LENGTH = 5000;
-const MAX_IMAGE_BASE64_LENGTH = 10_000_000; // ~7.5MB decoded
+const MAX_IMAGE_BASE64_LENGTH = 10_000_000;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -40,7 +40,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get("VITE_GEMINI_API_KEY");
+    // Atomic credit check & deduction
+    const { data: creditResult, error: creditError } = await supabase.rpc('deduct_credit', {
+      p_amount: 1,
+      p_reason: 'Chat with AI Concierge',
+    });
+
+    if (creditError || !creditResult?.success) {
+      const errorMsg = creditResult?.error || 'Credit check failed';
+      const status = errorMsg.includes('Insufficient') ? 402 : errorMsg.includes('Daily limit') ? 429 : 403;
+      return new Response(
+        JSON.stringify({ error: errorMsg }),
+        { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("VITE_GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
       return new Response(
         JSON.stringify({ error: "Gemini API key not configured" }),
@@ -48,7 +63,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse and validate input
     let body: Record<string, unknown>;
     try {
       body = await req.json();
@@ -61,7 +75,6 @@ Deno.serve(async (req) => {
 
     const { message, history, imageBase64 } = body;
 
-    // Validate message
     if (!message || typeof message !== "string") {
       return new Response(
         JSON.stringify({ error: "message is required and must be a string" }),
@@ -76,7 +89,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validate history
     if (history !== undefined && history !== null) {
       if (!Array.isArray(history)) {
         return new Response(
@@ -92,7 +104,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Validate imageBase64
     if (imageBase64 !== undefined && imageBase64 !== null) {
       if (typeof imageBase64 !== "string") {
         return new Response(
@@ -110,7 +121,6 @@ Deno.serve(async (req) => {
 
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-    // Sanitize history entries
     const safeHistory = (Array.isArray(history) ? history : [])
       .filter((h: any) => h && typeof h.role === "string" && typeof h.text === "string")
       .map((h: any) => ({

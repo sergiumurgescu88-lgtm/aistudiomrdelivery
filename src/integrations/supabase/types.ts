@@ -160,6 +160,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      deduct_credit: {
+        Args: { p_amount?: number; p_reason?: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
