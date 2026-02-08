@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Settings2, Snowflake, Info, Loader2, AlertCircle, Coins, User as UserIcon, LogOut, Plus, CheckCircle, Mail, X, Download, Globe2 } from 'lucide-react';
 import MenuParser from '../components/MenuParser';
 import DishCard from '../components/DishCard';
@@ -6,7 +7,7 @@ import Snowfall from '../components/Snowfall';
 import ChatBot from '../components/ChatBot';
 import Auth from '../components/Auth';
 import Pricing from '../components/Pricing';
-import AdminPanel from '../components/AdminPanel';
+
 import UserDashboard from '../components/UserDashboard';
 import SupportPolicyModal from '../components/SupportPolicyModal';
 import { Dish, PhotoStyle, ImageSize, PhotoQuality, STYLE_TOOLTIPS } from '../types';
@@ -33,6 +34,7 @@ const MrDeliveryLogo = ({ size = 24, className = "", idPrefix = "logo" }: { size
 interface Toast { id: string; type: 'success' | 'error' | 'info'; message: string; subMessage?: string; }
 
 const Index: React.FC = () => {
+  const navigate = useNavigate();
   const { profile, isAdmin, isLoading: authLoading, signOut } = useAuth();
   const { chargeCredit, purchaseCredits } = useCredits();
 
@@ -48,7 +50,6 @@ const Index: React.FC = () => {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
   const [showUserDashboard, setShowUserDashboard] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -119,7 +120,7 @@ const Index: React.FC = () => {
       {showAuth && <Auth onClose={() => setShowAuth(false)} />}
       {showPricing && <Pricing onPurchase={handlePurchase} onClose={() => setShowPricing(false)} currentCurrency={profile?.preferred_currency as any || 'EUR'} onCurrencyChange={() => {}} />}
       <SupportPolicyModal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} user={profile ? { credits: profile.credits, accountTier: profile.account_tier, email: profile.email } : null} />
-      {showAdmin && isAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      
       {showUserDashboard && profile && <UserDashboard onClose={() => setShowUserDashboard(false)} onOpenPricing={() => { setShowPricing(true); setShowUserDashboard(false); }} onOpenSupport={() => { setShowSupportModal(true); setShowUserDashboard(false); }} />}
 
       {/* Toast System */}
@@ -151,7 +152,7 @@ const Index: React.FC = () => {
           <div className="flex items-center gap-1 sm:gap-6 ml-auto">
             {profile ? (
               <div className="flex items-center gap-1.5 sm:gap-5">
-                {isAdmin && <button onClick={() => setShowAdmin(true)} className="flex items-center gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-orange-600/10 border border-zinc-800 hover:border-orange-500/40 rounded-xl sm:rounded-2xl transition-all text-orange-500 group shadow-lg"><span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest hidden md:inline">Admin</span></button>}
+                {isAdmin && <button onClick={() => navigate('/admin')} className="flex items-center gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-orange-600/10 border border-zinc-800 hover:border-orange-500/40 rounded-xl sm:rounded-2xl transition-all text-orange-500 group shadow-lg"><span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest hidden md:inline">Admin</span></button>}
                 <button onClick={() => setShowPricing(true)} className="flex items-center gap-1.5 sm:gap-4 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl sm:rounded-2xl transition-all group shadow-xl ring-1 ring-white/5">
                   <Coins size={14} className={`${getCreditColor(profile.credits)} sm:w-[18px] sm:h-[18px]`} />
                   <div className="flex flex-col items-start leading-none"><span className={`text-xs sm:text-sm font-black ${getCreditColor(profile.credits)}`}>{profile.credits}</span></div>
