@@ -1,12 +1,45 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { PhotoStyle, ImageSize, PhotoQuality, MenuAnalysisResult, AspectRatio } from "../types";
+import { supabase } from "@/integrations/supabase/client";
 
-const getApiKey = (): string => {
-  // Try multiple sources for the API key
-  const key = (import.meta as any).env?.VITE_GEMINI_API_KEY 
-    || localStorage.getItem('gemini_api_key') 
-    || '';
-  return key;
+let cachedApiKey: string | null = null;
+
+const getApiKey = async (): Promise<string> => {
+  if (cachedApiKey) return cachedApiKey;
+
+  // Try VITE env var first (backwards compatibility)
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (envKey) {
+    cachedApiKey = envKey;
+    return envKey;
+  }
+
+  // Fetch from edge function for authenticated users
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Authentication required to use AI features. Please sign in.");
+
+  const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/get-config`, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to load API configuration");
+  }
+
+  const { geminiKey } = await response.json();
+  if (!geminiKey) throw new Error("Gemini API key not configured on server");
+
+  cachedApiKey = geminiKey;
+  return geminiKey;
+};
+
+export const clearApiKeyCache = () => {
+  cachedApiKey = null;
 };
 
 const getMimeType = (dataUrl: string) => {
@@ -57,7 +90,8 @@ export const generateDishImage = async (
   locationBase64?: string | null,
   referenceBase64?: string | null
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
 
   const masterPrompt = `[MICHELIN PRODUCTION PROTOCOL] - ${dishName.toUpperCase()}
   MANDATE: Create a 100% photorealistic commercial asset.
@@ -94,7 +128,8 @@ export const generateDishImage = async (
 };
 
 export const parseMenuText = async (text: string): Promise<MenuAnalysisResult> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash",
     contents: `Parse menu items into structural high-end data. Return JSON with a "dishes" array where each item has "name" and "description" fields: ${text}`,
@@ -122,7 +157,8 @@ export const parseMenuText = async (text: string): Promise<MenuAnalysisResult> =
 };
 
 export const editDishImage = async (currentImageBase64: string, editPrompt: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash-exp",
     contents: {
@@ -141,7 +177,8 @@ export const editDishImage = async (currentImageBase64: string, editPrompt: stri
 };
 
 export const analyzeDishNutrition = async (imageBase64: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash",
     contents: {
@@ -155,7 +192,8 @@ export const analyzeDishNutrition = async (imageBase64: string): Promise<string>
 };
 
 export async function* chatWithConcierge(message: string, history: any[], imageBase64?: string | null) {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
 
   const contents: any[] = history.map((h: any) => ({
     role: h.role,
@@ -186,7 +224,8 @@ export async function* chatWithConcierge(message: string, history: any[], imageB
 }
 
 export const speakText = async (text: string): Promise<ArrayBuffer> => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: "gemini-2.0-flash",
     contents: [{ parts: [{ text: `Please generate a spoken version of this text: ${text}` }] }],
@@ -204,7 +243,8 @@ export const speakText = async (text: string): Promise<ArrayBuffer> => {
 };
 
 export const connectLiveConcierge = async (callbacks: any) => {
-  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const apiKey = await getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   return ai.live.connect({
     model: 'gemini-2.0-flash-live-001',
     callbacks,
