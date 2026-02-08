@@ -5,7 +5,7 @@ import {
   History, Info, Camera, Image as ImageIcon, Sparkles,
   Radio, Zap, BrainCircuit
 } from 'lucide-react';
-import { chatWithConcierge, speakText, connectLiveConcierge } from '../services/geminiService';
+import { chatWithConcierge, speakText, sendLiveConciergeMessage } from '../services/geminiService';
 
 interface Message {
   role: 'user' | 'model';
