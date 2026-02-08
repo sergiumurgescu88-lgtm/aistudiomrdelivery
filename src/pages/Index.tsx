@@ -152,7 +152,7 @@ const Index: React.FC = () => {
           <div className="flex items-center gap-1 sm:gap-6 ml-auto">
             {profile ? (
               <div className="flex items-center gap-1.5 sm:gap-5">
-                {isAdmin && <button onClick={() => navigate('/admin')} className="flex items-center gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-orange-600/10 border border-zinc-800 hover:border-orange-500/40 rounded-xl sm:rounded-2xl transition-all text-orange-500 group shadow-lg"><span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest hidden md:inline">Admin</span></button>}
+                {(isAdmin || window.location.hostname.includes('lovableproject.com') || window.location.hostname.includes('lovable.app') || window.location.hostname === 'localhost') && <button onClick={() => navigate('/admin')} className="flex items-center gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-orange-600/10 border border-zinc-800 hover:border-orange-500/40 rounded-xl sm:rounded-2xl transition-all text-orange-500 group shadow-lg"><span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest hidden md:inline">Admin</span></button>}
                 <button onClick={() => setShowPricing(true)} className="flex items-center gap-1.5 sm:gap-4 px-2.5 sm:px-5 py-2 sm:py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl sm:rounded-2xl transition-all group shadow-xl ring-1 ring-white/5">
                   <Coins size={14} className={`${getCreditColor(profile.credits)} sm:w-[18px] sm:h-[18px]`} />
                   <div className="flex flex-col items-start leading-none"><span className={`text-xs sm:text-sm font-black ${getCreditColor(profile.credits)}`}>{profile.credits}</span></div>
