@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { X, ShieldAlert, FileText, MessageSquare, AlertTriangle, CheckCircle, Clock, CreditCard, ChevronRight, HelpCircle } from 'lucide-react';
-import { User } from '../types';
+interface SupportUser {
+  credits: number;
+  accountTier: string;
+  email: string;
+}
 
 interface SupportPolicyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  user: User | null;
+  user: SupportUser | null;
 }
 
 const SupportPolicyModal: React.FC<SupportPolicyModalProps> = ({ isOpen, onClose, user }) => {

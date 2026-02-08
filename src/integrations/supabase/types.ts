@@ -14,16 +14,170 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          credits_affected: number
+          details: string
+          id: string
+          user_id: string
+          user_name: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          credits_affected?: number
+          details?: string
+          id?: string
+          user_id: string
+          user_name?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          credits_affected?: number
+          details?: string
+          id?: string
+          user_id?: string
+          user_name?: string
+        }
+        Relationships: []
+      }
+      credit_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          created_at: string
+          description: string
+          id: string
+          type: Database["public"]["Enums"]["credit_transaction_type"]
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after?: number
+          created_at?: string
+          description?: string
+          id?: string
+          type: Database["public"]["Enums"]["credit_transaction_type"]
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          created_at?: string
+          description?: string
+          id?: string
+          type?: Database["public"]["Enums"]["credit_transaction_type"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          account_status: Database["public"]["Enums"]["account_status"]
+          account_tier: Database["public"]["Enums"]["account_tier"]
+          created_at: string
+          credits: number
+          daily_usage: number
+          email: string
+          free_credits: number
+          full_name: string
+          id: string
+          is_email_verified: boolean
+          last_login: string | null
+          last_usage_date: string
+          preferred_currency: string
+          profile_photo: string | null
+          purchased_credits: number
+          total_generations: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_status?: Database["public"]["Enums"]["account_status"]
+          account_tier?: Database["public"]["Enums"]["account_tier"]
+          created_at?: string
+          credits?: number
+          daily_usage?: number
+          email: string
+          free_credits?: number
+          full_name?: string
+          id?: string
+          is_email_verified?: boolean
+          last_login?: string | null
+          last_usage_date?: string
+          preferred_currency?: string
+          profile_photo?: string | null
+          purchased_credits?: number
+          total_generations?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_status?: Database["public"]["Enums"]["account_status"]
+          account_tier?: Database["public"]["Enums"]["account_tier"]
+          created_at?: string
+          credits?: number
+          daily_usage?: number
+          email?: string
+          free_credits?: number
+          full_name?: string
+          id?: string
+          is_email_verified?: boolean
+          last_login?: string | null
+          last_usage_date?: string
+          preferred_currency?: string
+          profile_photo?: string | null
+          purchased_credits?: number
+          total_generations?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      account_status: "PENDING_VERIFICATION" | "ACTIVE" | "SUSPENDED"
+      account_tier: "FREE" | "PREMIUM"
+      app_role: "admin" | "moderator" | "user"
+      credit_transaction_type:
+        | "purchase"
+        | "usage"
+        | "bonus"
+        | "refund"
+        | "expiration"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +304,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_status: ["PENDING_VERIFICATION", "ACTIVE", "SUSPENDED"],
+      account_tier: ["FREE", "PREMIUM"],
+      app_role: ["admin", "moderator", "user"],
+      credit_transaction_type: [
+        "purchase",
+        "usage",
+        "bonus",
+        "refund",
+        "expiration",
+      ],
+    },
   },
 } as const
