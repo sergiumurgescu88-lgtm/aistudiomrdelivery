@@ -1,57 +1,31 @@
-import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { PhotoStyle, ImageSize, PhotoQuality, MenuAnalysisResult, AspectRatio } from "../types";
 import { supabase } from "@/integrations/supabase/client";
 
-let cachedApiKey: string | null = null;
+const getSupabaseUrl = () => (import.meta as any).env?.VITE_SUPABASE_URL;
 
-const getApiKey = async (): Promise<string> => {
-  if (cachedApiKey) return cachedApiKey;
-
-  // Try VITE env var first (backwards compatibility)
-  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (envKey) {
-    cachedApiKey = envKey;
-    return envKey;
-  }
-
-  // Fetch from edge function for authenticated users
+const getAuthHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("Authentication required to use AI features. Please sign in.");
+  if (!session) throw new Error("Authentication required. Please sign in.");
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+    "Content-Type": "application/json",
+  };
+};
 
-  const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
-  const response = await fetch(`${supabaseUrl}/functions/v1/get-config`, {
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
+const callEdgeFunction = async (functionName: string, body: Record<string, unknown>) => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${getSupabaseUrl()}/functions/v1/${functionName}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Failed to load API configuration");
+    throw new Error(errorData.error || `${functionName} failed`);
   }
 
-  const { geminiKey } = await response.json();
-  if (!geminiKey) throw new Error("Gemini API key not configured on server");
-
-  cachedApiKey = geminiKey;
-  return geminiKey;
-};
-
-export const clearApiKeyCache = () => {
-  cachedApiKey = null;
-};
-
-const getMimeType = (dataUrl: string) => {
-  try {
-    return dataUrl.split(';')[0].split(':')[1];
-  } catch (e) {
-    return "image/png";
-  }
-};
-
-const getBase64Data = (dataUrl: string) => {
-  return dataUrl.split(',')[1];
+  return response.json();
 };
 
 export const PREP_TEAM_PROMPT = `[PROTOCOL 3: PREP TEAM - HYPER-REALISTIC MINIATURE KITCHEN]
@@ -99,159 +73,68 @@ export const generateDishImage = async (
   COMPOSITION: Perfectly level horizon, 30% negative space, cinematic bokeh.
   ${referenceBase64 ? "REFERENCE LOCK: Match this plating architecture exactly." : ""}`;
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("Authentication required. Please sign in.");
-
-  const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
-  const response = await fetch(`${supabaseUrl}/functions/v1/generate-image`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      action: "generate",
-      prompt: masterPrompt,
-      aspectRatio,
-    }),
+  const { imageUrl } = await callEdgeFunction("generate-image", {
+    action: "generate",
+    prompt: masterPrompt,
+    aspectRatio,
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Image generation failed");
-  }
-
-  const { imageUrl } = await response.json();
   if (!imageUrl) throw new Error("API failed to return image data.");
   return imageUrl;
 };
 
 export const parseMenuText = async (text: string): Promise<MenuAnalysisResult> => {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: `Parse menu items into structural high-end data. Return JSON with a "dishes" array where each item has "name" and "description" fields: ${text}`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          dishes: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                description: { type: Type.STRING },
-              },
-              required: ["name", "description"],
-            },
-          },
-        },
-      },
-    },
-  });
-  return JSON.parse(response.text || '{"dishes":[]}');
+  return callEdgeFunction("gemini-parse-menu", { text });
 };
 
 export const editDishImage = async (currentImageBase64: string, editPrompt: string): Promise<string> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("Authentication required. Please sign in.");
-
-  const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
-  const response = await fetch(`${supabaseUrl}/functions/v1/generate-image`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      action: "edit",
-      imageBase64: currentImageBase64,
-      editPrompt: `MAGIC EDIT: ${editPrompt}. Hyper-realistic execution.`,
-    }),
+  const { imageUrl } = await callEdgeFunction("generate-image", {
+    action: "edit",
+    imageBase64: currentImageBase64,
+    editPrompt: `MAGIC EDIT: ${editPrompt}. Hyper-realistic execution.`,
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Edit failed");
-  }
-
-  const { imageUrl } = await response.json();
   if (!imageUrl) throw new Error("Edit failed.");
   return imageUrl;
 };
 
 export const analyzeDishNutrition = async (imageBase64: string): Promise<string> => {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: {
-      parts: [
-        { inlineData: { data: getBase64Data(imageBase64), mimeType: getMimeType(imageBase64) } },
-        { text: "Analyze this dish: list ingredients, estimated calories, and give Michelin-style feedback." }
-      ]
-    }
-  });
-  return response.text || "";
+  const { text } = await callEdgeFunction("gemini-nutrition", { imageBase64 });
+  return text || "";
 };
 
-export async function* chatWithConcierge(message: string, history: any[], imageBase64?: string | null) {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
-
-  const contents: any[] = history.map((h: any) => ({
-    role: h.role,
-    parts: [{ text: h.text }]
-  }));
-
-  const userParts: any[] = [{ text: message }];
-  if (imageBase64) {
-    userParts.push({
-      inlineData: {
-        data: getBase64Data(imageBase64),
-        mimeType: getMimeType(imageBase64)
-      }
-    });
-  }
-
-  const response = await ai.models.generateContentStream({
-    model: 'gemini-2.0-flash',
-    contents: [...contents, { role: 'user', parts: userParts }],
-    config: {
-      systemInstruction: `You are Maya, the expert AI Concierge for Instant Menu Pictures.
-      Analyze any images provided with Michelin standards.
-      Keep responses concise but intellectually deep.`
-    },
+export async function chatWithConcierge(
+  message: string,
+  history: any[],
+  imageBase64?: string | null
+): Promise<string> {
+  const { text } = await callEdgeFunction("gemini-chat", {
+    message,
+    history: history.map((h: any) => ({ role: h.role, text: h.text })),
+    imageBase64: imageBase64 || null,
   });
-
-  for await (const chunk of response) if (chunk.text) yield chunk.text;
+  return text || "";
 }
 
 export const speakText = async (text: string): Promise<ArrayBuffer> => {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: [{ parts: [{ text: `Please generate a spoken version of this text: ${text}` }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-    },
-  });
-  const base64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64) throw new Error("TTS failed.");
-  const binary = window.atob(base64);
+  const { audioBase64 } = await callEdgeFunction("gemini-tts", { text });
+  if (!audioBase64) throw new Error("TTS failed.");
+
+  const binary = window.atob(audioBase64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
 };
 
+// Note: Live concierge requires a direct WebSocket connection and cannot be
+// proxied through an edge function. It still needs a client-side API key.
 export const connectLiveConcierge = async (callbacks: any) => {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (!envKey) {
+    throw new Error("Live concierge requires a client-side API key configuration.");
+  }
+  const { GoogleGenAI, Modality } = await import("@google/genai");
+  const ai = new GoogleGenAI({ apiKey: envKey });
   return ai.live.connect({
     model: 'gemini-2.0-flash-live-001',
     callbacks,
