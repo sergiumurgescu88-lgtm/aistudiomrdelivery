@@ -90,41 +90,39 @@ export const generateDishImage = async (
   locationBase64?: string | null,
   referenceBase64?: string | null
 ): Promise<string> => {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
-
   const masterPrompt = `[MICHELIN PRODUCTION PROTOCOL] - ${dishName.toUpperCase()}
   MANDATE: Create a 100% photorealistic commercial asset.
   STYLE: ${style}
   CONTEXT: ${dishDescription}
   ${logoBase64 ? "INTEGRATE LOGO: Follow subtle branding protocol." : ""}
   ${locationBase64 ? "ENVIRONMENT: Use provided background context." : ""}
-  COMPOSITION: Perfectly level horizon, 30% negative space, cinematic bokeh.`;
+  COMPOSITION: Perfectly level horizon, 30% negative space, cinematic bokeh.
+  ${referenceBase64 ? "REFERENCE LOCK: Match this plating architecture exactly." : ""}`;
 
-  const parts: any[] = [{ text: masterPrompt }];
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Authentication required. Please sign in.");
 
-  if (referenceBase64) {
-    parts.unshift({ inlineData: { mimeType: getMimeType(referenceBase64), data: getBase64Data(referenceBase64) } });
-    parts.push({ text: "REFERENCE LOCK: Match this plating architecture exactly." });
-  }
-  if (locationBase64) {
-    parts.push({ inlineData: { mimeType: getMimeType(locationBase64), data: getBase64Data(locationBase64) } });
-  }
-  if (logoBase64) {
-    parts.push({ inlineData: { mimeType: getMimeType(logoBase64), data: getBase64Data(logoBase64) } });
-  }
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-preview-image-generation",
-    contents: { parts: parts },
-    config: {
-      responseModalities: [Modality.IMAGE, Modality.TEXT],
+  const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/generate-image`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      action: "generate",
+      prompt: masterPrompt,
+    }),
   });
 
-  const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-  if (!part) throw new Error("API failed to return image data.");
-  return `data:${(part as any).inlineData.mimeType};base64,${(part as any).inlineData.data}`;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Image generation failed");
+  }
+
+  const { imageUrl } = await response.json();
+  if (!imageUrl) throw new Error("API failed to return image data.");
+  return imageUrl;
 };
 
 export const parseMenuText = async (text: string): Promise<MenuAnalysisResult> => {
@@ -157,23 +155,31 @@ export const parseMenuText = async (text: string): Promise<MenuAnalysisResult> =
 };
 
 export const editDishImage = async (currentImageBase64: string, editPrompt: string): Promise<string> => {
-  const apiKey = await getApiKey();
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash-preview-image-generation",
-    contents: {
-      parts: [
-        { inlineData: { data: getBase64Data(currentImageBase64), mimeType: getMimeType(currentImageBase64) } },
-        { text: `MAGIC EDIT: ${editPrompt}. Hyper-realistic execution.` },
-      ],
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Authentication required. Please sign in.");
+
+  const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/generate-image`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
     },
-    config: {
-      responseModalities: [Modality.IMAGE, Modality.TEXT],
-    },
+    body: JSON.stringify({
+      action: "edit",
+      imageBase64: currentImageBase64,
+      editPrompt: `MAGIC EDIT: ${editPrompt}. Hyper-realistic execution.`,
+    }),
   });
-  const part = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-  if (!part) throw new Error("Edit failed.");
-  return `data:${(part as any).inlineData.mimeType};base64,${(part as any).inlineData.data}`;
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Edit failed");
+  }
+
+  const { imageUrl } = await response.json();
+  if (!imageUrl) throw new Error("Edit failed.");
+  return imageUrl;
 };
 
 export const analyzeDishNutrition = async (imageBase64: string): Promise<string> => {
